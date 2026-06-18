@@ -44,6 +44,7 @@ jobs:
     - name: Build Deploy Package
       run: |
         mkdir dist
+        touch dist/.nojekyll
         cp index.html dist/
         cp -r api dist/
 
