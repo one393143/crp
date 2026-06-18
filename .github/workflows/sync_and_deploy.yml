@@ -1,10 +1,14 @@
 name: Kintone Sync and Deploy to GitHub Pages
 
 on:
+  push:
+    branches:
+      - main
   schedule:
     # 每周日凌晨 00:00 UTC (星期天早上 08:00 台北時間)
     - cron: '0 0 * * 0'
   workflow_dispatch: # 允許手動觸發
+
 
 permissions:
   contents: write
