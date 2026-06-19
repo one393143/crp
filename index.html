@@ -1547,9 +1547,9 @@ async function globalSearch() {
       <div class="analysis-card-title">📊 客戶交易統計："${esc(q)}"</div>
       <div id="analysis-loading" class="loading" style="padding:20px;"><div class="spinner"></div><div>載入交易統計圖表…</div></div>
       <div id="analysis-content" class="chart-list" style="display:none;">
-        <button class="chart-trigger-btn" onclick="openChart('customer-revenue', '年度交易總金額 (TWD)')">📊 年度交易總金額 (TWD)</button>
-        <button class="chart-trigger-btn" onclick="openChart('customer-products', '年度產品購買數量 (按 EIT產品編號)')">📊 年度產品購買數量 (按 EIT產品編號)</button>
-        <button class="chart-trigger-btn" onclick="openChart('customer-categories', '年度產品類別購買數量 (按 產品名稱/Product Type)')">📊 年度產品類別購買數量 (按 產品名稱/Product Type)</button>
+        <button class="chart-trigger-btn" onclick="openChart('customer-revenue', '每年下單金額(TWD)')">📊 每年下單金額(TWD)</button>
+        <button class="chart-trigger-btn" onclick="openChart('customer-products', '每年購買產品名稱')">📊 每年購買產品名稱</button>
+        <button class="chart-trigger-btn" onclick="openChart('customer-categories', '每年購買產品種類')">📊 每年購買產品種類</button>
       </div>
     </div>`;
   } else if (searchMode === 'product') {
