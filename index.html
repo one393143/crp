@@ -251,23 +251,23 @@ body{
 
 /* ── Home Tab ───────────────────────────────────── */
 .home-hero{
-  padding:24px 24px 20px;
-  background:var(--surface);
-  border-bottom:1px solid var(--border);
-  flex-shrink:0;
+  padding: 10px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .home-title{
-  font-size:20px;
-  font-weight:700;
-  letter-spacing:-0.4px;
-  margin-bottom:4px;
-  color:var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--text);
+  white-space: nowrap;
 }
-
-.home-sub{color:var(--muted);font-size:13px;margin-bottom:18px;}
-
-.search-row{display:flex;gap:8px;max-width:800px;width:100%;}
 
 /* Search buttons group */
 .search-type-group {
@@ -354,12 +354,13 @@ body{
   background:#fff;
   border:1.5px solid var(--border);
   border-radius:var(--radius);
-  padding:10px 14px;
-  font-size:14px;
+  padding:8px 12px;
+  font-size:13px;
   font-family:inherit;
   color:var(--text);
   outline:none;
   transition:border-color .2s,box-shadow .2s;
+  min-width: 180px;
 }
 
 .global-input:focus{
@@ -371,7 +372,7 @@ body{
   background:var(--accent2);
   border:none;
   border-radius:var(--radius);
-  padding:10px 20px;
+  padding:8px 18px;
   color:#fff;
   font-size:13px;
   font-weight:600;
@@ -651,11 +652,14 @@ mark{
   .tab-chip{display:none;}
 
   /* Home */
-  .home-hero{padding:16px 14px 14px;}
-  .home-title{font-size:16px;}
-  .home-sub{font-size:12px;margin-bottom:12px;}
-  .search-row{flex-direction:column;gap:6px;max-width:100%;}
-  .search-btn{width:100%;padding:11px;}
+  .home-hero{
+    padding: 12px 14px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .home-title{font-size:14px;}
+  .search-btn{width:100%;padding:10px;}
 
   .stats-row{
     padding:10px 12px;
@@ -739,19 +743,16 @@ mark{
   <!-- HOME -->
   <div id="tab-home" class="tab-pane active">
     <div class="home-hero">
-      <div class="home-title">客戶與交易資料查詢</div>
-      <div class="home-sub">搜尋範圍涵蓋聯絡人、訂購單、POS 交易所有欄位</div>
-      <div class="search-row">
-        <div class="search-type-group" id="search-type-group">
-          <button class="search-type-btn active" data-mode="all">ALL</button>
-          <button class="search-type-btn" data-mode="customer">客戶</button>
-          <button class="search-type-btn" data-mode="product">產品</button>
-          <button class="search-type-btn" data-mode="category">產品類別</button>
-        </div>
-        <input class="global-input" id="g-input"
-               placeholder="輸入客戶名稱、產品型號、業務、發票號碼…" autocomplete="off">
-        <button class="search-btn" id="g-btn">搜尋</button>
+      <div class="home-title">客戶與交易查詢</div>
+      <div class="search-type-group" id="search-type-group">
+        <button class="search-type-btn active" data-mode="all">ALL</button>
+        <button class="search-type-btn" data-mode="customer">客戶</button>
+        <button class="search-type-btn" data-mode="product">產品</button>
+        <button class="search-type-btn" data-mode="category">產品類別</button>
       </div>
+      <input class="global-input" id="g-input"
+             placeholder="輸入客戶名稱、產品型號、業務、發票號碼…" autocomplete="off">
+      <button class="search-btn" id="g-btn">搜尋</button>
     </div>
     <div id="home-results">
       <div class="empty-state">
