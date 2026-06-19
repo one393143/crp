@@ -821,14 +821,13 @@ mark{
         <button class="search-type-btn" data-mode="category">產品類別</button>
       </div>
       <input class="global-input" id="g-input"
-             placeholder="輸入客戶名稱、產品型號、業務、發票號碼…" autocomplete="off">
+             placeholder="輸入客戶名稱、產品型號…" autocomplete="off">
       <button class="search-btn" id="g-btn">搜尋</button>
     </div>
     <div id="home-results">
       <div class="empty-state">
         <div class="empty-icon">🔍</div>
         <div style="font-size:15px;font-weight:500;">輸入關鍵字開始搜尋</div>
-        <div style="font-size:12px;">支援全欄位模糊搜尋，搜尋速度在本地資料庫進行</div>
       </div>
     </div>
   </div>
@@ -1704,7 +1703,7 @@ document.getElementById('search-type-group').addEventListener('click', e => {
   
   const input = document.getElementById('g-input');
   if (searchMode === 'all') {
-    input.placeholder = "輸入客戶名稱、產品型號、業務、發票號碼…";
+    input.placeholder = "輸入客戶名稱、產品型號…";
   } else if (searchMode === 'customer') {
     input.placeholder = "輸入客戶名稱以搜尋並生成交易統計…";
   } else if (searchMode === 'product') {
