@@ -3,25 +3,25 @@
     {
       "app_id": 69,
       "app_name": "客戶訂購單",
-      "total_rows": 751,
-      "synced_at": "2026-06-18T05:05:42.539092+00:00"
+      "total_rows": 753,
+      "synced_at": "2026-06-19T08:54:31.468211+00:00"
     },
     {
       "app_id": 71,
       "app_name": "聯絡人",
       "total_rows": 1060,
-      "synced_at": "2026-06-18T05:05:40.104206+00:00"
+      "synced_at": "2026-06-19T08:54:28.859234+00:00"
     },
     {
       "app_id": 310,
       "app_name": "POS 歷史",
       "total_rows": 14852,
-      "synced_at": "2026-06-18T05:06:05.523496+00:00"
+      "synced_at": "2026-06-19T08:54:55.074407+00:00"
     }
   ],
   "counts": {
     "contacts": 1060,
-    "orders": 751,
+    "orders": 753,
     "pos_records": 14852
   }
 }

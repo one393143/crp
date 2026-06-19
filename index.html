@@ -49,7 +49,7 @@ body{
   align-items:center;
   justify-content:space-between;
   flex-shrink:0;
-  gap:12px;
+  gap:20px;
   box-shadow:0 1px 4px rgba(0,0,0,0.06);
 }
 
@@ -93,24 +93,26 @@ body{
 
 /* ── Tab Bar ─────────────────────────────────────── */
 #tabbar{
-  background:var(--surface);
-  border-bottom:1px solid var(--border);
   display:flex;
-  padding:0 16px;
-  gap:0;
+  gap:4px;
   flex-shrink:0;
   overflow-x:auto;
+  height: 100%;
+  align-items: center;
+  margin-left: 12px;
+  margin-right: auto;
 }
 
 .tab-btn{
   background:none;
   border:none;
-  border-bottom:2px solid transparent;
+  border-bottom:3px solid transparent;
   color:var(--muted);
   font-family:inherit;
   font-size:13px;
   font-weight:500;
-  padding:12px 16px;
+  padding:0 16px;
+  height: 100%;
   cursor:pointer;
   display:flex;
   align-items:center;
@@ -121,7 +123,7 @@ body{
 }
 
 .tab-btn:hover{color:var(--text);}
-.tab-btn.active{color:var(--accent2);border-bottom-color:var(--accent2);}
+.tab-btn.active{color:var(--accent2);border-bottom-color:var(--accent2);font-weight:600;}
 
 .tab-chip{
   background:var(--accent-light);
@@ -130,6 +132,115 @@ body{
   padding:1px 7px;
   font-size:11px;
   font-weight:600;
+}
+
+/* ── Modal overlay ───────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.modal-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+.modal-body {
+  background: var(--surface);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 800px;
+  height: 70vh;
+  max-height: 520px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateY(20px);
+  transition: transform 0.25s ease;
+}
+.modal-overlay.active .modal-body {
+  transform: translateY(0);
+}
+.modal-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--row-alt);
+}
+.modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent2);
+}
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  transition: color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+}
+.modal-close:hover {
+  color: var(--text);
+  background: var(--border);
+}
+.modal-content {
+  flex: 1;
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Chart list buttons ──────────────────────────── */
+.chart-list {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 4px 0;
+}
+.chart-trigger-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--accent2);
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.chart-trigger-btn:hover {
+  background: var(--accent-light);
+  border-color: #93c5fd;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(59,125,216,0.15);
+}
+.chart-trigger-btn:active {
+  transform: scale(0.98);
 }
 
 /* ── Content Area ────────────────────────────────── */
@@ -608,20 +719,19 @@ mark{
 <!-- Navbar -->
 <nav id="navbar">
   <div class="nav-brand">⚡ CRM 業務與交易查詢系統</div>
+  <!-- Tab Bar -->
+  <div id="tabbar">
+    <button class="tab-btn active" data-tab="home">首頁</button>
+    <button class="tab-btn" data-tab="contacts">聯絡人 <span class="tab-chip" id="chip-contacts">—</span></button>
+    <button class="tab-btn" data-tab="orders">訂購單 <span class="tab-chip" id="chip-orders">—</span></button>
+    <button class="tab-btn" data-tab="pos">POS <span class="tab-chip" id="chip-pos">—</span></button>
+    <button class="tab-btn" data-tab="eitlogs">接洽紀錄 <span class="tab-chip" id="chip-eitlogs">—</span></button>
+    <button class="tab-btn" data-tab="twopp">商機追蹤 <span class="tab-chip" id="chip-twopp">—</span></button>
+  </div>
   <div class="nav-badges" id="nav-badges">
     <div class="badge"><span class="spinner" style="width:12px;height:12px;border-width:1.5px;"></span> 載入中...</div>
   </div>
 </nav>
-
-<!-- Tab Bar -->
-<div id="tabbar">
-  <button class="tab-btn active" data-tab="home">🏠&nbsp;首頁</button>
-  <button class="tab-btn" data-tab="contacts">👥&nbsp;聯絡人 <span class="tab-chip" id="chip-contacts">—</span></button>
-  <button class="tab-btn" data-tab="orders">📋&nbsp;訂購單 <span class="tab-chip" id="chip-orders">—</span></button>
-  <button class="tab-btn" data-tab="pos">💹&nbsp;POS <span class="tab-chip" id="chip-pos">—</span></button>
-  <button class="tab-btn" data-tab="eitlogs">📝&nbsp;接洽紀錄 <span class="tab-chip" id="chip-eitlogs">—</span></button>
-  <button class="tab-btn" data-tab="twopp">📈&nbsp;商機追蹤 <span class="tab-chip" id="chip-twopp">—</span></button>
-</div>
 
 <!-- Content -->
 <div id="content">
@@ -643,7 +753,6 @@ mark{
         <button class="search-btn" id="g-btn">搜尋</button>
       </div>
     </div>
-    <div class="stats-row" id="stats-row"></div>
     <div id="home-results">
       <div class="empty-state">
         <div class="empty-icon">🔍</div>
@@ -720,6 +829,19 @@ mark{
 
 </div>
 
+<!-- Modal for displaying charts -->
+<div id="chart-modal" class="modal-overlay" onclick="closeChartModal()">
+  <div class="modal-body" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3 class="modal-title" id="modal-title">圖表</h3>
+      <button class="modal-close" onclick="closeChartModal()">✕</button>
+    </div>
+    <div class="modal-content">
+      <canvas id="modal-canvas"></canvas>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 // ── State ──────────────────────────────────────────────────
@@ -732,7 +854,8 @@ const S = {
 };
 
 let searchMode = 'all';
-let chartInstances = {};
+let modalChart = null;
+let lastAnalysisData = null;
 
 const isGitHubPages = window.location.port !== '5000';
 
@@ -1101,32 +1224,13 @@ async function loadStatus() {
   try {
     const finalUrl = isGitHubPages ? 'api/status.json' : '/api/status';
     const d = await api(finalUrl);
-    const names = {71:'聯絡人',69:'訂購單',310:'POS 交易'};
-    const icons = {71:'👥',69:'📋',310:'💹'};
     
     // Nav badges
     let badges = '';
-    for (const l of d.sync_logs) {
-      badges += `<div class="badge"><span class="sync-dot"></span>
-        ${icons[l.app_id]||''} ${names[l.app_id]||'App '+l.app_id}
-        <b>${Number(l.total_rows).toLocaleString()}</b> 筆</div>`;
-    }
     const times = d.sync_logs.map(l=>l.synced_at).filter(Boolean).sort().reverse();
     if (times.length)
-      badges += `<div class="badge" style="color:var(--muted)">🕐 ${relTime(times[0])}</div>`;
+      badges += `<div class="badge" style="color:var(--muted2)">🕐 上次同步：${relTime(times[0])}</div>`;
     document.getElementById('nav-badges').innerHTML = badges;
-    
-    // Stat cards
-    let cards = '';
-    for (const l of d.sync_logs) {
-      cards += `
-        <div class="stat-card">
-          <div class="stat-label">${icons[l.app_id]||''} ${names[l.app_id]||'App '+l.app_id}</div>
-          <div class="stat-value">${Number(l.total_rows).toLocaleString()}</div>
-          <div class="stat-sub">上次同步 ${relTime(l.synced_at)}</div>
-        </div>`;
-    }
-    document.getElementById('stats-row').innerHTML = cards;
   } catch(e) {
     document.getElementById('nav-badges').innerHTML =
       `<div class="badge" style="color:#dc2626">⚠ 無法連線</div>`;
@@ -1339,7 +1443,10 @@ async function globalSearch() {
   const er = filter(S.eitlogs.rows);
   const tr = filter(S.twopp.rows);
 
-  destroyCharts();
+  if (modalChart) {
+    modalChart.destroy();
+    modalChart = null;
+  }
 
   let h = '';
   
@@ -1347,57 +1454,30 @@ async function globalSearch() {
     h += `<div id="analysis-section" class="analysis-card">
       <div class="analysis-card-title">📊 客戶交易統計："${esc(q)}"</div>
       <div id="analysis-loading" class="loading" style="padding:20px;"><div class="spinner"></div><div>載入交易統計圖表…</div></div>
-      <div id="analysis-content" class="analysis-grid" style="display:none;">
-        <div class="chart-box">
-          <div class="chart-title">年度交易總金額 (TWD)</div>
-          <div class="chart-canvas-wrap"><canvas id="canvas-customer-revenue"></canvas></div>
-        </div>
-        <div class="chart-box">
-          <div class="chart-title">年度產品購買數量 (按 EIT產品編號)</div>
-          <div class="chart-canvas-wrap"><canvas id="canvas-customer-products"></canvas></div>
-        </div>
-        <div class="chart-box">
-          <div class="chart-title">年度產品類別購買數量 (按 產品名稱/Product Type)</div>
-          <div class="chart-canvas-wrap"><canvas id="canvas-customer-categories"></canvas></div>
-        </div>
+      <div id="analysis-content" class="chart-list" style="display:none;">
+        <button class="chart-trigger-btn" onclick="openChart('customer-revenue', '年度交易總金額 (TWD)')">📊 年度交易總金額 (TWD)</button>
+        <button class="chart-trigger-btn" onclick="openChart('customer-products', '年度產品購買數量 (按 EIT產品編號)')">📊 年度產品購買數量 (按 EIT產品編號)</button>
+        <button class="chart-trigger-btn" onclick="openChart('customer-categories', '年度產品類別購買數量 (按 產品名稱/Product Type)')">📊 年度產品類別購買數量 (按 產品名稱/Product Type)</button>
       </div>
     </div>`;
   } else if (searchMode === 'product') {
     h += `<div id="analysis-section" class="analysis-card">
       <div class="analysis-card-title">📊 產品銷售統計："${esc(q)}"</div>
       <div id="analysis-loading" class="loading" style="padding:20px;"><div class="spinner"></div><div>載入交易統計圖表…</div></div>
-      <div id="analysis-content" class="analysis-grid" style="display:none;">
-        <div class="chart-box">
-          <div class="chart-title">年度交易量</div>
-          <div class="chart-canvas-wrap"><canvas id="canvas-product-volume"></canvas></div>
-        </div>
-        <div class="chart-box" id="box-product-margin">
-          <div class="chart-title">年度平均毛利率 (%)</div>
-          <div class="chart-canvas-wrap"><canvas id="canvas-product-margin"></canvas></div>
-        </div>
-        <div class="chart-box" style="grid-column: 1 / -1;">
-          <div class="chart-title">客戶購買比例與數量 (堆疊橫條圖)</div>
-          <div class="chart-canvas-wrap" style="min-height: 320px;"><canvas id="canvas-product-customers"></canvas></div>
-        </div>
+      <div id="analysis-content" class="chart-list" style="display:none;">
+        <button class="chart-trigger-btn" onclick="openChart('product-volume', '年度交易量')">📊 年度交易量</button>
+        <button id="btn-product-margin" class="chart-trigger-btn" onclick="openChart('product-margin', '年度平均毛利率 (%)')">📊 年度平均毛利率 (%)</button>
+        <button class="chart-trigger-btn" onclick="openChart('product-customers', '客戶購買比例與數量 (堆疊橫條圖)')">📊 客戶購買比例與數量 (堆疊橫條圖)</button>
       </div>
     </div>`;
   } else if (searchMode === 'category') {
     h += `<div id="analysis-section" class="analysis-card">
       <div class="analysis-card-title">📊 產品品類銷售統計："${esc(q)}"</div>
       <div id="analysis-loading" class="loading" style="padding:20px;"><div class="spinner"></div><div>載入交易統計圖表…</div></div>
-      <div id="analysis-content" class="analysis-grid" style="display:none;">
-        <div class="chart-box">
-          <div class="chart-title">年度交易量</div>
-          <div class="chart-canvas-wrap"><canvas id="canvas-category-volume"></canvas></div>
-        </div>
-        <div class="chart-box" id="box-category-margin">
-          <div class="chart-title">年度平均毛利率 (%)</div>
-          <div class="chart-canvas-wrap"><canvas id="canvas-category-margin"></canvas></div>
-        </div>
-        <div class="chart-box" style="grid-column: 1 / -1;">
-          <div class="chart-title">客戶購買比例與數量 (堆疊橫條圖)</div>
-          <div class="chart-canvas-wrap" style="min-height: 320px;"><canvas id="canvas-category-customers"></canvas></div>
-        </div>
+      <div id="analysis-content" class="chart-list" style="display:none;">
+        <button class="chart-trigger-btn" onclick="openChart('category-volume', '年度交易量')">📊 年度交易量</button>
+        <button id="btn-category-margin" class="chart-trigger-btn" onclick="openChart('category-margin', '年度平均毛利率 (%)')">📊 年度平均毛利率 (%)</button>
+        <button class="chart-trigger-btn" onclick="openChart('category-customers', '客戶購買比例與數量 (堆疊橫條圖)')">📊 客戶購買比例與數量 (堆疊橫條圖)</button>
       </div>
     </div>`;
   }
@@ -1521,34 +1601,103 @@ document.getElementById('search-type-group').addEventListener('click', e => {
   }
 });
 
-// ── Chart.js Helper & Destroy ────────────────────────────────
-function destroyCharts() {
-  for (const k in chartInstances) {
-    if (chartInstances[k]) {
-      chartInstances[k].destroy();
-      chartInstances[k] = null;
+// ── Chart Helper & Modal Controller ──────────────────────────
+async function fetchCustomerAnalysis(q) {
+  try {
+    const data = isGitHubPages ? localAnalyzeCustomer(q) : await api(`/api/analysis/customer?q=${encodeURIComponent(q)}`);
+    window.lastAnalysisData = data;
+    const loadingEl = document.getElementById('analysis-loading');
+    const contentEl = document.getElementById('analysis-content');
+    if (!loadingEl || !contentEl) return;
+    loadingEl.style.display = 'none';
+    contentEl.style.display = 'flex';
+  } catch (err) {
+    console.error(err);
+    const section = document.getElementById('analysis-section');
+    if (section) {
+      section.innerHTML = `<div style="color:#dc2626;padding:20px;text-align:center;">⚠ 載入客戶統計失敗: ${err.message}</div>`;
     }
   }
 }
 
-async function fetchCustomerAnalysis(q) {
+async function fetchProductAnalysis(q) {
   try {
-    const data = isGitHubPages ? localAnalyzeCustomer(q) : await api(`/api/analysis/customer?q=${encodeURIComponent(q)}`);
+    const data = isGitHubPages ? localAnalyzeProduct(q) : await api(`/api/analysis/product?q=${encodeURIComponent(q)}`);
+    window.lastAnalysisData = data;
     const loadingEl = document.getElementById('analysis-loading');
     const contentEl = document.getElementById('analysis-content');
     if (!loadingEl || !contentEl) return;
-    
     loadingEl.style.display = 'none';
-    contentEl.style.display = 'grid';
+    contentEl.style.display = 'flex';
     
+    const marginBtn = document.getElementById('btn-product-margin');
+    if (marginBtn) {
+      if (data.yearly_margin && data.yearly_margin.length > 0) {
+        marginBtn.style.display = 'inline-flex';
+      } else {
+        marginBtn.style.display = 'none';
+      }
+    }
+  } catch (err) {
+    console.error(err);
+    const section = document.getElementById('analysis-section');
+    if (section) {
+      section.innerHTML = `<div style="color:#dc2626;padding:20px;text-align:center;">⚠ 載入產品統計失敗: ${err.message}</div>`;
+    }
+  }
+}
+
+async function fetchCategoryAnalysis(q) {
+  try {
+    const data = isGitHubPages ? localAnalyzeCategory(q) : await api(`/api/analysis/category?q=${encodeURIComponent(q)}`);
+    window.lastAnalysisData = data;
+    const loadingEl = document.getElementById('analysis-loading');
+    const contentEl = document.getElementById('analysis-content');
+    if (!loadingEl || !contentEl) return;
+    loadingEl.style.display = 'none';
+    contentEl.style.display = 'flex';
+    
+    const marginBtn = document.getElementById('btn-category-margin');
+    if (marginBtn) {
+      if (data.yearly_margin && data.yearly_margin.length > 0) {
+        marginBtn.style.display = 'inline-flex';
+      } else {
+        marginBtn.style.display = 'none';
+      }
+    }
+  } catch (err) {
+    console.error(err);
+    const section = document.getElementById('analysis-section');
+    if (section) {
+      section.innerHTML = `<div style="color:#dc2626;padding:20px;text-align:center;">⚠ 載入類別統計失敗: ${err.message}</div>`;
+    }
+  }
+}
+
+function openChart(chartKey, title) {
+  const modal = document.getElementById('chart-modal');
+  document.getElementById('modal-title').textContent = title;
+  modal.classList.add('active');
+  
+  const canvas = document.getElementById('modal-canvas');
+  const ctx = canvas.getContext('2d');
+  
+  if (modalChart) {
+    modalChart.destroy();
+    modalChart = null;
+  }
+  
+  const data = window.lastAnalysisData;
+  if (!data) return;
+  
+  if (chartKey === 'customer-revenue') {
     const years = data.yearly_totals.map(item => item.year);
     const bgColors = data.yearly_totals.map(item => item.source === 'orders' ? '#3b7dd8' : '#10b981');
     const borderColors = data.yearly_totals.map(item => item.source === 'orders' ? '#2563eb' : '#059669');
     const amounts = data.yearly_totals.map(item => item.amount_twd);
     const sources = data.yearly_totals.map(item => item.source === 'orders' ? '訂購單' : 'POS 交易');
 
-    const ctx1 = document.getElementById('canvas-customer-revenue').getContext('2d');
-    chartInstances['customer-revenue'] = new Chart(ctx1, {
+    modalChart = new Chart(ctx, {
       type: 'bar',
       data: {
         labels: years,
@@ -1590,16 +1739,14 @@ async function fetchCustomerAnalysis(q) {
           y: {
             beginAtZero: true,
             ticks: {
-              callback: function(value) {
-                return 'NT$ ' + value.toLocaleString();
-              }
+              callback: function(value) { return 'NT$ ' + value.toLocaleString(); }
             }
           }
         }
       }
     });
-
-    const uniqueProducts = [...new Set(data.yearly_products.map(p => p.product))];
+  } else if (chartKey === 'customer-products') {
+    const years = data.yearly_totals.map(item => item.year);
     const productTotals = {};
     data.yearly_products.forEach(p => {
       productTotals[p.product] = (productTotals[p.product] || 0) + p.qty;
@@ -1635,21 +1782,14 @@ async function fetchCustomerAnalysis(q) {
       });
     }
 
-    const ctx2 = document.getElementById('canvas-customer-products').getContext('2d');
-    chartInstances['customer-products'] = new Chart(ctx2, {
+    modalChart = new Chart(ctx, {
       type: 'bar',
-      data: {
-        labels: years,
-        datasets: datasets
-      },
+      data: { labels: years, datasets: datasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            position: 'right',
-            labels: { boxWidth: 12, font: { size: 10 } }
-          },
+          legend: { position: 'right', labels: { boxWidth: 12, font: { size: 10 } } },
           tooltip: {
             callbacks: {
               label: function(context) {
@@ -1664,9 +1804,8 @@ async function fetchCustomerAnalysis(q) {
         }
       }
     });
-
-    // Render Customer Categories Chart
-    const uniqueCategories = [...new Set(data.yearly_categories.map(c => c.category))];
+  } else if (chartKey === 'customer-categories') {
+    const years = data.yearly_totals.map(item => item.year);
     const categoryTotals = {};
     data.yearly_categories.forEach(c => {
       categoryTotals[c.category] = (categoryTotals[c.category] || 0) + c.qty;
@@ -1702,21 +1841,14 @@ async function fetchCustomerAnalysis(q) {
       });
     }
 
-    const ctx3 = document.getElementById('canvas-customer-categories').getContext('2d');
-    chartInstances['customer-categories'] = new Chart(ctx3, {
+    modalChart = new Chart(ctx, {
       type: 'bar',
-      data: {
-        labels: years,
-        datasets: catDatasets
-      },
+      data: { labels: years, datasets: catDatasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            position: 'right',
-            labels: { boxWidth: 12, font: { size: 10 } }
-          },
+          legend: { position: 'right', labels: { boxWidth: 12, font: { size: 10 } } },
           tooltip: {
             callbacks: {
               label: function(context) {
@@ -1731,32 +1863,12 @@ async function fetchCustomerAnalysis(q) {
         }
       }
     });
-
-  } catch (err) {
-    console.error(err);
-    const section = document.getElementById('analysis-section');
-    if (section) {
-      section.innerHTML = `<div style="color:#dc2626;padding:20px;text-align:center;">⚠ 載入客戶統計失敗: ${err.message}</div>`;
-    }
-  }
-}
-
-async function fetchProductAnalysis(q) {
-  try {
-    const data = isGitHubPages ? localAnalyzeProduct(q) : await api(`/api/analysis/product?q=${encodeURIComponent(q)}`);
-    const loadingEl = document.getElementById('analysis-loading');
-    const contentEl = document.getElementById('analysis-content');
-    if (!loadingEl || !contentEl) return;
-    
-    loadingEl.style.display = 'none';
-    contentEl.style.display = 'grid';
-    
+  } else if (chartKey === 'product-volume' || chartKey === 'category-volume') {
     const years = data.yearly_volume.map(item => item.year);
     const volumes = data.yearly_volume.map(item => item.qty);
     const sources = data.yearly_volume.map(item => item.source === 'orders' ? '訂購單' : 'POS 交易');
     
-    const ctx1 = document.getElementById('canvas-product-volume').getContext('2d');
-    chartInstances['product-volume'] = new Chart(ctx1, {
+    modalChart = new Chart(ctx, {
       type: 'line',
       data: {
         labels: years,
@@ -1789,54 +1901,46 @@ async function fetchProductAnalysis(q) {
         }
       }
     });
-
-    if (data.yearly_margin && data.yearly_margin.length > 0) {
-      const marginYears = data.yearly_margin.map(item => item.year);
-      const margins = data.yearly_margin.map(item => item.margin_pct);
-      
-      const ctx2 = document.getElementById('canvas-product-margin').getContext('2d');
-      chartInstances['product-margin'] = new Chart(ctx2, {
-        type: 'line',
-        data: {
-          labels: marginYears,
-          datasets: [{
-            label: '平均毛利率 (%)',
-            data: margins,
-            borderColor: '#ea580c',
-            backgroundColor: 'rgba(234, 88, 12, 0.1)',
-            fill: true,
-            tension: 0.1,
-            pointBackgroundColor: '#ea580c',
-            pointRadius: 4
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  return `毛利率: ${context.parsed.y}%`;
-                }
-              }
+  } else if (chartKey === 'product-margin' || chartKey === 'category-margin') {
+    const marginYears = data.yearly_margin.map(item => item.year);
+    const margins = data.yearly_margin.map(item => item.margin_pct);
+    
+    modalChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: marginYears,
+        datasets: [{
+          label: '平均毛利率 (%)',
+          data: margins,
+          borderColor: '#ea580c',
+          backgroundColor: 'rgba(234, 88, 12, 0.1)',
+          fill: true,
+          tension: 0.1,
+          pointBackgroundColor: '#ea580c',
+          pointRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: function(context) { return `毛利率: ${context.parsed.y}%`; }
             }
-          },
-          scales: {
-            y: {
-              ticks: {
-                callback: function(value) { return value + '%'; }
-              }
+          }
+        },
+        scales: {
+          y: {
+            ticks: {
+              callback: function(value) { return value + '%'; }
             }
           }
         }
-      });
-    } else {
-      const marginBox = document.getElementById('box-product-margin');
-      if (marginBox) marginBox.style.display = 'none';
-    }
-
-    const uniqueCustomers = [...new Set(data.customer_breakdown.map(c => c.customer))];
+      }
+    });
+  } else if (chartKey === 'product-customers' || chartKey === 'category-customers') {
+    const years = data.yearly_volume.map(item => item.year);
     const customerTotals = {};
     data.customer_breakdown.forEach(c => {
       customerTotals[c.customer] = (customerTotals[c.customer] || 0) + c.qty;
@@ -1872,22 +1976,15 @@ async function fetchProductAnalysis(q) {
       });
     }
 
-    const ctx3 = document.getElementById('canvas-product-customers').getContext('2d');
-    chartInstances['product-customers'] = new Chart(ctx3, {
+    modalChart = new Chart(ctx, {
       type: 'bar',
-      data: {
-        labels: years,
-        datasets: datasets
-      },
+      data: { labels: years, datasets: datasets },
       options: {
         indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            position: 'right',
-            labels: { boxWidth: 12, font: { size: 10 } }
-          },
+          legend: { position: 'right', labels: { boxWidth: 12, font: { size: 10 } } },
           tooltip: {
             callbacks: {
               label: function(context) {
@@ -1902,184 +1999,15 @@ async function fetchProductAnalysis(q) {
         }
       }
     });
-
-  } catch (err) {
-    console.error(err);
-    const section = document.getElementById('analysis-section');
-    if (section) {
-      section.innerHTML = `<div style="color:#dc2626;padding:20px;text-align:center;">⚠ 載入產品統計失敗: ${err.message}</div>`;
-    }
   }
 }
 
-async function fetchCategoryAnalysis(q) {
-  try {
-    const data = isGitHubPages ? localAnalyzeCategory(q) : await api(`/api/analysis/category?q=${encodeURIComponent(q)}`);
-    const loadingEl = document.getElementById('analysis-loading');
-    const contentEl = document.getElementById('analysis-content');
-    if (!loadingEl || !contentEl) return;
-    
-    loadingEl.style.display = 'none';
-    contentEl.style.display = 'grid';
-    
-    const years = data.yearly_volume.map(item => item.year);
-    const volumes = data.yearly_volume.map(item => item.qty);
-    const sources = data.yearly_volume.map(item => item.source === 'orders' ? '訂購單' : 'POS 交易');
-    
-    const ctx1 = document.getElementById('canvas-category-volume').getContext('2d');
-    chartInstances['category-volume'] = new Chart(ctx1, {
-      type: 'line',
-      data: {
-        labels: years,
-        datasets: [{
-          label: '交易數量 (個)',
-          data: volumes,
-          borderColor: '#2563eb',
-          backgroundColor: 'rgba(37, 99, 235, 0.1)',
-          fill: true,
-          tension: 0.1,
-          pointBackgroundColor: '#2563eb',
-          pointRadius: 4
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          tooltip: {
-            callbacks: {
-              label: function(context) {
-                const idx = context.dataIndex;
-                return `數量: ${context.parsed.y.toLocaleString()} (${sources[idx]})`;
-              }
-            }
-          }
-        },
-        scales: {
-          y: { beginAtZero: true }
-        }
-      }
-    });
-
-    if (data.yearly_margin && data.yearly_margin.length > 0) {
-      const marginYears = data.yearly_margin.map(item => item.year);
-      const margins = data.yearly_margin.map(item => item.margin_pct);
-      
-      const ctx2 = document.getElementById('canvas-category-margin').getContext('2d');
-      chartInstances['category-margin'] = new Chart(ctx2, {
-        type: 'line',
-        data: {
-          labels: marginYears,
-          datasets: [{
-            label: '平均毛利率 (%)',
-            data: margins,
-            borderColor: '#ea580c',
-            backgroundColor: 'rgba(234, 88, 12, 0.1)',
-            fill: true,
-            tension: 0.1,
-            pointBackgroundColor: '#ea580c',
-            pointRadius: 4
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  return `毛利率: ${context.parsed.y}%`;
-                }
-              }
-            }
-          },
-          scales: {
-            y: {
-              ticks: {
-                callback: function(value) { return value + '%'; }
-              }
-            }
-          }
-        }
-      });
-    } else {
-      const marginBox = document.getElementById('box-category-margin');
-      if (marginBox) marginBox.style.display = 'none';
-    }
-
-    const uniqueCustomers = [...new Set(data.customer_breakdown.map(c => c.customer))];
-    const customerTotals = {};
-    data.customer_breakdown.forEach(c => {
-      customerTotals[c.customer] = (customerTotals[c.customer] || 0) + c.qty;
-    });
-    const sortedCustomers = Object.keys(customerTotals).sort((a,b) => customerTotals[b] - customerTotals[a]);
-    const topCustomers = sortedCustomers.slice(0, 8);
-    const hasOthers = sortedCustomers.length > 8;
-
-    const datasets = topCustomers.map((cust, idx) => {
-      const hue = (idx * 360 / Math.min(9, sortedCustomers.length)) % 360;
-      const color = `hsl(${hue}, 70%, 55%)`;
-      return {
-        label: cust,
-        data: years.map(yr => {
-          const matched = data.customer_breakdown.filter(c => c.year === yr && c.customer === cust);
-          return matched.reduce((sum, item) => sum + item.qty, 0);
-        }),
-        backgroundColor: color,
-        stack: 'Stack 0'
-      };
-    });
-
-    if (hasOthers) {
-      datasets.push({
-        label: '其他客戶',
-        data: years.map(yr => {
-          const otherCusts = sortedCustomers.slice(8);
-          const matched = data.customer_breakdown.filter(c => c.year === yr && otherCusts.includes(c.customer));
-          return matched.reduce((sum, item) => sum + item.qty, 0);
-        }),
-        backgroundColor: '#94a3b8',
-        stack: 'Stack 0'
-      });
-    }
-
-    const ctx3 = document.getElementById('canvas-category-customers').getContext('2d');
-    chartInstances['category-customers'] = new Chart(ctx3, {
-      type: 'bar',
-      data: {
-        labels: years,
-        datasets: datasets
-      },
-      options: {
-        indexAxis: 'y',
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: 'right',
-            labels: { boxWidth: 12, font: { size: 10 } }
-          },
-          tooltip: {
-            callbacks: {
-              label: function(context) {
-                return `${context.dataset.label}: ${context.parsed.x.toLocaleString()} 個`;
-              }
-            }
-          }
-        },
-        scales: {
-          x: { stacked: true },
-          y: { stacked: true }
-        }
-      }
-    });
-
-  } catch (err) {
-    console.error(err);
-    const section = document.getElementById('analysis-section');
-    if (section) {
-      section.innerHTML = `<div style="color:#dc2626;padding:20px;text-align:center;">⚠ 載入類別統計失敗: ${err.message}</div>`;
-    }
+function closeChartModal() {
+  const modal = document.getElementById('chart-modal');
+  modal.classList.remove('active');
+  if (modalChart) {
+    modalChart.destroy();
+    modalChart = null;
   }
 }
 
