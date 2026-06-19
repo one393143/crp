@@ -652,14 +652,7 @@ mark{
   .tab-chip{display:none;}
 
   /* Home */
-  .home-hero{
-    padding: 12px 14px;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-  }
   .home-title{font-size:14px;}
-  .search-btn{width:100%;padding:10px;}
 
   .stats-row{
     padding:10px 12px;
@@ -712,9 +705,19 @@ mark{
   .pb{padding:4px 7px;min-width:26px;font-size:11px;}
 }
 
-@media (max-width:400px){
+@media (max-width:480px){
   .nav-badges{display:none;}
   .tab-btn{padding:10px 8px;font-size:11px;}
+  .home-hero {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 12px 14px;
+  }
+  .search-btn {
+    width: 100%;
+    padding: 10px;
+  }
 }
 </style>
 </head>
