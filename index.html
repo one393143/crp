@@ -930,16 +930,11 @@ let lastAnalysisData = null;
 
 const isGitHubPages = window.location.port !== '5000';
 
-function localAnalyzeCustomer(q) {
-  const ql = q.toLowerCase();
-  const yearly_totals_orders = {};
-  const yearly_products_orders = {};
-  const yearly_categories_orders = {};
-  
-  const getYear = s => {
+function getMergedTransactions(ordersRows, posRows, q, filterType) {
+  const parseDate = s => {
     if (!s) return null;
-    const match = String(s).match(/^\d{4}/);
-    return match ? parseInt(match[0]) : null;
+    const match = String(s).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return match ? new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3])) : null;
   };
   
   const parseNum = v => {
@@ -947,92 +942,201 @@ function localAnalyzeCustomer(q) {
     return isNaN(f) ? 0 : f;
   };
 
-  // 1. Orders
-  S.orders.rows.forEach(row => {
+  const ql = q ? q.toLowerCase() : '';
+
+  // 1. Parse Orders rows (Schema: SCHEMA_69_COLS)
+  const orderLines = [];
+  ordersRows.forEach(row => {
     const customer = String(row[3] || '');
-    if (!customer.toLowerCase().includes(ql)) return;
+    const productNo = String(row[12] || '').trim();
+    const category = String(row[11] || '').trim();
     
-    const year = getYear(row[4]);
-    if (!year) return;
-    
-    const twd = parseNum(row[18]); // 金額合計(TWD)
-    const qty = parseNum(row[15]); // 數量
-    const product = String(row[12] || '').trim(); // EIT產品編號
-    const category = String(row[11] || '').trim(); // 產品名稱
-    
-    yearly_totals_orders[year] = (yearly_totals_orders[year] || 0) + twd;
-    
-    if (!yearly_products_orders[year]) yearly_products_orders[year] = {};
-    yearly_products_orders[year][product] = (yearly_products_orders[year][product] || 0) + qty;
-    
-    if (!yearly_categories_orders[year]) yearly_categories_orders[year] = {};
-    yearly_categories_orders[year][category] = (yearly_categories_orders[year][category] || 0) + qty;
-  });
+    if (filterType === 'customer') {
+      if (ql && !customer.toLowerCase().includes(ql)) return;
+    } else if (filterType === 'product') {
+      if (ql && !productNo.toLowerCase().includes(ql)) return;
+    } else if (filterType === 'category') {
+      if (ql && !category.toLowerCase().includes(ql)) return;
+    }
 
-  // 2. POS
-  const yearly_totals_pos = {};
-  const yearly_products_pos = {};
-  const yearly_categories_pos = {};
-  
-  S.pos.rows.forEach(row => {
-    const customer = String(row[0] || '');
-    if (!customer.toLowerCase().includes(ql)) return;
-    
-    const year = getYear(row[1]);
-    if (!year) return;
-    
-    const sales_total = parseNum(row[10]); // Sales Total (NT$)
-    const qty = parseNum(row[8]); // Qty.
-    const product = String(row[6] || '').trim(); // Product No.
-    const category = String(row[5] || '').trim(); // Product Type
-    
-    yearly_totals_pos[year] = (yearly_totals_pos[year] || 0) + sales_total;
-    
-    if (!yearly_products_pos[year]) yearly_products_pos[year] = {};
-    yearly_products_pos[year][product] = (yearly_products_pos[year][product] || 0) + qty;
-    
-    if (!yearly_categories_pos[year]) yearly_categories_pos[year] = {};
-    yearly_categories_pos[year][category] = (yearly_categories_pos[year][category] || 0) + qty;
-  });
+    const dateStr = String(row[4] || '');
+    const date = parseDate(dateStr);
+    const yr = date ? date.getFullYear() : null;
+    if (!yr) return;
 
-  // 3. Merge
-  const allYears = [...new Set([...Object.keys(yearly_totals_orders), ...Object.keys(yearly_totals_pos)])]
-    .map(Number).sort((a, b) => a - b);
-    
-  const yearly_totals = allYears.map(yr => {
-    const hasOrders = yr in yearly_totals_orders;
-    return {
+    orderLines.push({
+      source: 'orders',
+      customer: customer,
+      dateStr: dateStr,
+      date: date,
       year: yr,
-      amount_twd: hasOrders ? yearly_totals_orders[yr] : yearly_totals_pos[yr],
-      source: hasOrders ? 'orders' : 'pos'
-    };
+      productNo: productNo,
+      category: category,
+      qty: parseNum(row[15]),
+      amountTwd: parseNum(row[18]),
+      costTwd: parseNum(row[25]),
+      matched: false
+    });
+  });
+
+  // 2. Parse POS rows (Schema: SCHEMA_310)
+  const posLines = [];
+  posRows.forEach(row => {
+    const customer = String(row[0] || '');
+    const productNo = String(row[6] || '').trim();
+    const category = String(row[5] || '').trim();
+    
+    if (filterType === 'customer') {
+      if (ql && !customer.toLowerCase().includes(ql)) return;
+    } else if (filterType === 'product') {
+      if (ql && !productNo.toLowerCase().includes(ql)) return;
+    } else if (filterType === 'category') {
+      if (ql && !category.toLowerCase().includes(ql)) return;
+    }
+
+    const dateStr = String(row[1] || '');
+    const date = parseDate(dateStr);
+    const yr = date ? date.getFullYear() : null;
+    if (!yr) return;
+
+    posLines.push({
+      source: 'pos',
+      customer: customer,
+      dateStr: dateStr,
+      date: date,
+      year: yr,
+      productNo: productNo,
+      category: category,
+      qty: parseNum(row[8]),
+      amountTwd: parseNum(row[10]),
+      costTwd: parseNum(row[12]),
+      matched: false
+    });
+  });
+
+  // 3. Match 1-to-1
+  orderLines.forEach(o => {
+    if (!o.date) return;
+    for (let i = 0; i < posLines.length; i++) {
+      const p = posLines[i];
+      if (p.matched) continue;
+      if (!p.date) continue;
+
+      if (o.productNo.toLowerCase() !== p.productNo.toLowerCase()) continue;
+      if (Math.abs(o.qty - p.qty) > 0.01) continue;
+
+      const diffDays = Math.abs((o.date - p.date) / 86400000);
+      if (diffDays <= 7) {
+        o.matched = true;
+        p.matched = true;
+        break;
+      }
+    }
+  });
+
+  const merged = [];
+  posLines.forEach(p => merged.push(p));
+  orderLines.forEach(o => {
+    if (!o.matched) {
+      merged.push(o);
+    }
+  });
+
+  return merged;
+}
+
+function localAnalyzeCustomer(q) {
+  const merged = getMergedTransactions(S.orders.rows, S.pos.rows, q, 'customer');
+
+  const yearly_t = {};
+  const yearly_p = {};
+  const yearly_c = {};
+
+  merged.forEach(tx => {
+    const yr = tx.year;
+    const source = tx.source;
+    const amt = tx.amountTwd;
+    const qty = tx.qty;
+    const prod = tx.productNo;
+    const cat = tx.category;
+
+    if (!yearly_t[yr]) {
+      yearly_t[yr] = { pos_sum: 0, orders_sum: 0 };
+    }
+    if (source === 'pos') {
+      yearly_t[yr].pos_sum += amt;
+    } else {
+      yearly_t[yr].orders_sum += amt;
+    }
+
+    if (prod) {
+      const pk = `${yr}|||${prod}`;
+      if (!yearly_p[pk]) {
+        yearly_p[pk] = { pos_qty: 0, orders_qty: 0 };
+      }
+      if (source === 'pos') {
+        yearly_p[pk].pos_qty += qty;
+      } else {
+        yearly_p[pk].orders_qty += qty;
+      }
+    }
+
+    if (cat) {
+      const ck = `${yr}|||${cat}`;
+      if (!yearly_c[ck]) {
+        yearly_c[ck] = { pos_qty: 0, orders_qty: 0 };
+      }
+      if (source === 'pos') {
+        yearly_c[ck].pos_qty += qty;
+      } else {
+        yearly_c[ck].orders_qty += qty;
+      }
+    }
+  });
+
+  const yearly_totals = Object.keys(yearly_t).map(Number).sort((a,b)=>a-b).map(yr => {
+    const p_sum = yearly_t[yr].pos_sum;
+    const o_sum = yearly_t[yr].orders_sum;
+    const tot = p_sum + o_sum;
+    let src = 'orders';
+    if (p_sum > 0 && o_sum > 0) src = 'orders & pos';
+    else if (p_sum > 0) src = 'pos';
+    return { year: yr, amount_twd: tot, source: src };
   });
 
   const yearly_products = [];
-  const yearly_categories = [];
-  
-  allYears.forEach(yr => {
-    const hasOrders = yr in yearly_totals_orders;
-    const prodSource = hasOrders ? yearly_products_orders[yr] : yearly_products_pos[yr];
-    const catSource = hasOrders ? yearly_categories_orders[yr] : yearly_categories_pos[yr];
-    const srcName = hasOrders ? 'orders' : 'pos';
-    
-    if (prodSource) {
-      Object.entries(prodSource).forEach(([prod, qty]) => {
-        if (prod && qty > 0) {
-          yearly_products.push({ year: yr, product: prod, qty: qty, source: srcName });
-        }
-      });
-    }
-    
-    if (catSource) {
-      Object.entries(catSource).forEach(([cat, qty]) => {
-        if (cat && qty > 0) {
-          yearly_categories.push({ year: yr, category: cat, qty: qty, source: srcName });
-        }
-      });
+  Object.keys(yearly_p).forEach(key => {
+    const parts = key.split('|||');
+    const yr = parseInt(parts[0]);
+    const prod = parts[1];
+    const p_qty = yearly_p[key].pos_qty;
+    const o_qty = yearly_p[key].orders_qty;
+    const tot = p_qty + o_qty;
+    if (tot > 0) {
+      let src = 'orders';
+      if (p_qty > 0 && o_qty > 0) src = 'orders & pos';
+      else if (p_qty > 0) src = 'pos';
+      yearly_products.push({ year: yr, product: prod, qty: tot, source: src });
     }
   });
+  yearly_products.sort((a,b) => a.year - b.year || b.qty - a.qty);
+
+  const yearly_categories = [];
+  Object.keys(yearly_c).forEach(key => {
+    const parts = key.split('|||');
+    const yr = parseInt(parts[0]);
+    const cat = parts[1];
+    const p_qty = yearly_c[key].pos_qty;
+    const o_qty = yearly_c[key].orders_qty;
+    const tot = p_qty + o_qty;
+    if (tot > 0) {
+      let src = 'orders';
+      if (p_qty > 0 && o_qty > 0) src = 'orders & pos';
+      else if (p_qty > 0) src = 'pos';
+      yearly_categories.push({ year: yr, category: cat, qty: tot, source: src });
+    }
+  });
+  yearly_categories.sort((a,b) => a.year - b.year || b.qty - a.qty);
 
   return {
     query: q,
@@ -1043,107 +1147,66 @@ function localAnalyzeCustomer(q) {
 }
 
 function localAnalyzeProduct(q) {
-  const ql = q.toLowerCase();
-  const yearly_volume = {};
-  const yearly_revenue = {};
-  const yearly_cost = {};
-  const customer_breakdown = {};
-  
-  const getYear = s => {
-    if (!s) return null;
-    const match = String(s).match(/^\d{4}/);
-    return match ? parseInt(match[0]) : null;
-  };
-  
-  const parseNum = v => {
-    const f = parseFloat(v);
-    return isNaN(f) ? 0 : f;
-  };
+  const merged = getMergedTransactions(S.orders.rows, S.pos.rows, q, 'product');
 
-  // 1. Orders
-  S.orders.rows.forEach(row => {
-    const product_code = String(row[12] || ''); // EIT產品編號
-    if (!product_code.toLowerCase().includes(ql)) return;
-    
-    const year = getYear(row[4]);
-    if (!year) return;
-    
-    const customer = String(row[3] || '');
-    const qty = parseNum(row[15]);
-    const twd = parseNum(row[18]); // 金額合計(TWD)
-    const cost = parseNum(row[25]); // 成本金額(TWD)
-    
-    yearly_volume[year] = (yearly_volume[year] || 0) + qty;
-    yearly_revenue[year] = (yearly_revenue[year] || 0) + twd;
-    yearly_cost[year] = (yearly_cost[year] || 0) + cost;
-    
-    const ck = `${year}|||${customer}`;
-    customer_breakdown[ck] = (customer_breakdown[ck] || 0) + qty;
-  });
+  const yearly_vol = {};
+  const yearly_rev_cost = {};
+  const cust_breakdown = {};
 
-  // 2. POS
-  const pos_yearly_volume = {};
-  const pos_customer_breakdown = {};
-  
-  S.pos.rows.forEach(row => {
-    const product_no = String(row[6] || '');
-    if (!product_no.toLowerCase().includes(ql)) return;
-    
-    const year = getYear(row[1]);
-    if (!year) return;
-    
-    const customer = String(row[0] || '');
-    const qty = parseNum(row[8]);
-    
-    pos_yearly_volume[year] = (pos_yearly_volume[year] || 0) + qty;
-    
-    const ck = `${year}|||${customer}`;
-    pos_customer_breakdown[ck] = (pos_customer_breakdown[ck] || 0) + qty;
-  });
+  merged.forEach(tx => {
+    const yr = tx.year;
+    const source = tx.source;
+    const qty = tx.qty;
+    const amt = tx.amountTwd;
+    const cost = tx.costTwd;
+    const cust = tx.customer;
 
-  // 3. Merge
-  const allYears = [...new Set([...Object.keys(yearly_volume), ...Object.keys(pos_yearly_volume)])]
-    .map(Number).sort((a, b) => a - b);
-    
-  const volume_out = [];
-  const margin_out = [];
-  
-  allYears.forEach(yr => {
-    const hasOrders = yr in yearly_volume;
-    const qty = hasOrders ? yearly_volume[yr] : pos_yearly_volume[yr];
-    volume_out.push({
-      year: yr,
-      qty: qty,
-      source: hasOrders ? 'orders' : 'pos'
-    });
-    
-    if (hasOrders && yearly_revenue[yr] !== 0) {
-      const rev = yearly_revenue[yr];
-      const cost = yearly_cost[yr] || 0;
-      const margin_pct = rev ? Math.round((rev - cost) / rev * 1000) / 10 : 0;
-      margin_out.push({
-        year: yr,
-        margin_pct: margin_pct,
-        revenue_twd: rev
-      });
+    if (!yearly_vol[yr]) {
+      yearly_vol[yr] = { pos_qty: 0, orders_qty: 0 };
+    }
+    if (source === 'pos') {
+      yearly_vol[yr].pos_qty += qty;
+    } else {
+      yearly_vol[yr].orders_qty += qty;
+    }
+
+    if (!yearly_rev_cost[yr]) {
+      yearly_rev_cost[yr] = { revenue: 0, cost: 0 };
+    }
+    yearly_rev_cost[yr].revenue += amt;
+    yearly_rev_cost[yr].cost += cost;
+
+    if (cust) {
+      const ck = `${yr}|||${cust}`;
+      cust_breakdown[ck] = (cust_breakdown[ck] || 0) + qty;
     }
   });
 
-  // customer breakdown
-  const cb_out = [];
-  const allCks = [...new Set([...Object.keys(customer_breakdown), ...Object.keys(pos_customer_breakdown)])];
-  allCks.sort();
-  
-  allCks.forEach(ck => {
-    const parts = ck.split('|||');
+  const volume_out = Object.keys(yearly_vol).map(Number).sort((a,b)=>a-b).map(yr => {
+    const p_qty = yearly_vol[yr].pos_qty;
+    const o_qty = yearly_vol[yr].orders_qty;
+    const tot = p_qty + o_qty;
+    let src = 'orders';
+    if (p_qty > 0 && o_qty > 0) src = 'orders & pos';
+    else if (p_qty > 0) src = 'pos';
+    return { year: yr, qty: tot, source: src };
+  });
+
+  const margin_out = Object.keys(yearly_rev_cost).map(Number).sort((a,b)=>a-b).map(yr => {
+    const rev = yearly_rev_cost[yr].revenue;
+    const cost = yearly_rev_cost[yr].cost;
+    const margin_pct = rev ? Math.round((rev - cost) / rev * 1000) / 10 : 0;
+    return { year: yr, margin_pct: margin_pct, revenue_twd: rev };
+  }).filter(item => item.revenue_twd !== 0);
+
+  const cb_out = Object.keys(cust_breakdown).map(key => {
+    const parts = key.split('|||');
     const yr = parseInt(parts[0]);
     const cust = parts[1];
-    
-    const qty = (customer_breakdown[ck] !== undefined) ? customer_breakdown[ck] : pos_customer_breakdown[ck];
-    if (cust && qty > 0) {
-      cb_out.push({ year: yr, customer: cust, qty: qty });
-    }
-  });
+    const qty = cust_breakdown[key];
+    return { year: yr, customer: cust, qty: qty };
+  }).filter(item => item.qty > 0);
+  cb_out.sort((a,b) => a.year - b.year || b.qty - a.qty);
 
   return {
     query: q,
@@ -1154,107 +1217,74 @@ function localAnalyzeProduct(q) {
 }
 
 function localAnalyzeCategory(q) {
-  const ql = q.toLowerCase();
-  const yearly_volume = {};
-  const yearly_revenue = {};
-  const yearly_cost = {};
-  const customer_breakdown = {};
-  
-  const getYear = s => {
-    if (!s) return null;
-    const match = String(s).match(/^\d{4}/);
-    return match ? parseInt(match[0]) : null;
-  };
-  
-  const parseNum = v => {
-    const f = parseFloat(v);
-    return isNaN(f) ? 0 : f;
-  };
+  const merged = getMergedTransactions(S.orders.rows, S.pos.rows, q, 'category');
 
-  // 1. Orders
-  S.orders.rows.forEach(row => {
-    const product_name = String(row[11] || ''); // 產品名稱 (category)
-    if (!product_name.toLowerCase().includes(ql)) return;
-    
-    const year = getYear(row[4]);
-    if (!year) return;
-    
-    const customer = String(row[3] || '');
-    const qty = parseNum(row[15]);
-    const twd = parseNum(row[18]);
-    const cost = parseNum(row[25]);
-    
-    yearly_volume[year] = (yearly_volume[year] || 0) + qty;
-    yearly_revenue[year] = (yearly_revenue[year] || 0) + twd;
-    yearly_cost[year] = (yearly_cost[year] || 0) + cost;
-    
-    const ck = `${year}|||${customer}`;
-    customer_breakdown[ck] = (customer_breakdown[ck] || 0) + qty;
-  });
+  const yearly_vol = {};
+  const yearly_rev_cost = {};
+  const cust_breakdown = {};
 
-  // 2. POS
-  const pos_yearly_volume = {};
-  const pos_customer_breakdown = {};
-  
-  S.pos.rows.forEach(row => {
-    const product_type = String(row[5] || '');
-    if (!product_type.toLowerCase().includes(ql)) return;
-    
-    const year = getYear(row[1]);
-    if (!year) return;
-    
-    const customer = String(row[0] || '');
-    const qty = parseNum(row[8]);
-    
-    pos_yearly_volume[year] = (pos_yearly_volume[year] || 0) + qty;
-    
-    const ck = `${year}|||${customer}`;
-    pos_customer_breakdown[ck] = (pos_customer_breakdown[ck] || 0) + qty;
-  });
+  merged.forEach(tx => {
+    const yr = tx.year;
+    const source = tx.source;
+    const qty = tx.qty;
+    const amt = tx.amountTwd;
+    const cost = tx.costTwd;
+    const cust = tx.customer;
 
-  // 3. Merge
-  const allYears = [...new Set([...Object.keys(yearly_volume), ...Object.keys(pos_yearly_volume)])]
-    .map(Number).sort((a, b) => a - b);
-    
-  const volume_out = [];
-  const margin_out = [];
-  
-  allYears.forEach(yr => {
-    const hasOrders = yr in yearly_volume;
-    const qty = hasOrders ? yearly_volume[yr] : pos_yearly_volume[yr];
-    volume_out.push({
-      year: yr,
-      qty: qty,
-      source: hasOrders ? 'orders' : 'pos'
-    });
-    
-    if (hasOrders && yearly_revenue[yr] !== 0) {
-      const rev = yearly_revenue[yr];
-      const cost = yearly_cost[yr] || 0;
-      const margin_pct = rev ? Math.round((rev - cost) / rev * 1000) / 10 : 0;
-      margin_out.push({
-        year: yr,
-        margin_pct: margin_pct,
-        revenue_twd: rev
-      });
+    if (!yearly_vol[yr]) {
+      yearly_vol[yr] = { pos_qty: 0, orders_qty: 0 };
+    }
+    if (source === 'pos') {
+      yearly_vol[yr].pos_qty += qty;
+    } else {
+      yearly_vol[yr].orders_qty += qty;
+    }
+
+    if (!yearly_rev_cost[yr]) {
+      yearly_rev_cost[yr] = { revenue: 0, cost: 0 };
+    }
+    yearly_rev_cost[yr].revenue += amt;
+    yearly_rev_cost[yr].cost += cost;
+
+    if (cust) {
+      const ck = `${yr}|||${cust}`;
+      cust_breakdown[ck] = (cust_breakdown[ck] || 0) + qty;
     }
   });
 
-  // customer breakdown
-  const cb_out = [];
-  const allCks = [...new Set([...Object.keys(customer_breakdown), ...Object.keys(pos_customer_breakdown)])];
-  allCks.sort();
-  
-  allCks.forEach(ck => {
-    const parts = ck.split('|||');
+  const volume_out = Object.keys(yearly_vol).map(Number).sort((a,b)=>a-b).map(yr => {
+    const p_qty = yearly_vol[yr].pos_qty;
+    const o_qty = yearly_vol[yr].orders_qty;
+    const tot = p_qty + o_qty;
+    let src = 'orders';
+    if (p_qty > 0 && o_qty > 0) src = 'orders & pos';
+    else if (p_qty > 0) src = 'pos';
+    return { year: yr, qty: tot, source: src };
+  });
+
+  const margin_out = Object.keys(yearly_rev_cost).map(Number).sort((a,b)=>a-b).map(yr => {
+    const rev = yearly_rev_cost[yr].revenue;
+    const cost = yearly_rev_cost[yr].cost;
+    const margin_pct = rev ? Math.round((rev - cost) / rev * 1000) / 10 : 0;
+    return { year: yr, margin_pct: margin_pct, revenue_twd: rev };
+  }).filter(item => item.revenue_twd !== 0);
+
+  const cb_out = Object.keys(cust_breakdown).map(key => {
+    const parts = key.split('|||');
     const yr = parseInt(parts[0]);
     const cust = parts[1];
-    
-    const qty = (customer_breakdown[ck] !== undefined) ? customer_breakdown[ck] : pos_customer_breakdown[ck];
-    if (cust && qty > 0) {
-      cb_out.push({ year: yr, customer: cust, qty: qty });
-    }
-  });
+    const qty = cust_breakdown[key];
+    return { year: yr, customer: cust, qty: qty };
+  }).filter(item => item.qty > 0);
+  cb_out.sort((a,b) => a.year - b.year || b.qty - a.qty);
+
+  return {
+    query: q,
+    yearly_volume: volume_out,
+    yearly_margin: margin_out,
+    customer_breakdown: cb_out
+  };
+}
 
   return {
     query: q,
@@ -1783,10 +1813,16 @@ function openChart(chartKey, title) {
   
   if (chartKey === 'customer-revenue') {
     const years = data.yearly_totals.map(item => item.year);
-    const bgColors = data.yearly_totals.map(item => item.source === 'orders' ? '#3b7dd8' : '#10b981');
-    const borderColors = data.yearly_totals.map(item => item.source === 'orders' ? '#2563eb' : '#059669');
+    const bgColors = data.yearly_totals.map(item => {
+      if (item.source === 'orders & pos') return '#8b5cf6';
+      return item.source === 'orders' ? '#3b7dd8' : '#10b981';
+    });
+    const borderColors = data.yearly_totals.map(item => {
+      if (item.source === 'orders & pos') return '#7c3aed';
+      return item.source === 'orders' ? '#2563eb' : '#059669';
+    });
     const amounts = data.yearly_totals.map(item => item.amount_twd);
-    const sources = data.yearly_totals.map(item => item.source === 'orders' ? '訂購單' : 'POS 交易');
+    const sources = data.yearly_totals.map(item => item.source);
 
     modalChart = new Chart(ctx, {
       type: 'bar',
@@ -1809,7 +1845,10 @@ function openChart(chartKey, title) {
               label: function(context) {
                 const index = context.dataIndex;
                 const value = context.parsed.y;
-                const src = sources[index];
+                const srcRaw = sources[index];
+                let src = '訂購單';
+                if (srcRaw === 'pos') src = 'POS 交易';
+                else if (srcRaw === 'orders & pos') src = '訂購單 & POS 混合';
                 return `金額: NT$ ${value.toLocaleString()} (${src})`;
               }
             }
@@ -1820,7 +1859,8 @@ function openChart(chartKey, title) {
               generateLabels: function(chart) {
                 return [
                   { text: '訂購單數據', fillStyle: '#3b7dd8', strokeStyle: '#2563eb', lineWidth: 1 },
-                  { text: 'POS 數據 (補正)', fillStyle: '#10b981', strokeStyle: '#059669', lineWidth: 1 }
+                  { text: 'POS 數據 (補正)', fillStyle: '#10b981', strokeStyle: '#059669', lineWidth: 1 },
+                  { text: '訂購單 & POS 混合', fillStyle: '#8b5cf6', strokeStyle: '#7c3aed', lineWidth: 1 }
                 ];
               }
             }
@@ -1957,7 +1997,10 @@ function openChart(chartKey, title) {
   } else if (chartKey === 'product-volume' || chartKey === 'category-volume') {
     const years = data.yearly_volume.map(item => item.year);
     const volumes = data.yearly_volume.map(item => item.qty);
-    const sources = data.yearly_volume.map(item => item.source === 'orders' ? '訂購單' : 'POS 交易');
+    const sources = data.yearly_volume.map(item => {
+      if (item.source === 'orders & pos') return '訂購單 & POS 混合';
+      return item.source === 'orders' ? '訂購單' : 'POS 交易';
+    });
     
     modalChart = new Chart(ctx, {
       type: 'line',
