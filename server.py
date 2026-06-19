@@ -221,6 +221,11 @@ def orders_to_rows(raw_json_str: str) -> list[list]:
                 detail_vals[label] = _val(cell_amt_raw) if cell_amt_raw else _fmt_num(cell_amt)
             elif code == "金額合計_TWD_":
                 detail_vals[label] = _val(cell_twd_raw) if cell_twd_raw else _fmt_num(cell_twd)
+            elif code == "利潤率":
+                val = _val(cell.get(code, {}).get('value')) if cell.get(code) else ''
+                if val and not val.endswith('%'):
+                    val = f"{val}%"
+                detail_vals[label] = val
             else:
                 fv = cell.get(code)
                 detail_vals[label] = _val(fv.get('value')) if fv else ''
@@ -474,31 +479,30 @@ def _year(date_str):
     return None
 
 
-@app.route("/api/analysis/customer")
-def api_analysis_customer():
-    q = request.args.get("q", "").strip()
-    if not q:
-        return jsonify({"error": "請提供搜尋關鍵字"}), 400
-
-    # ── 1. 從 Orders 明細展平取資料 ──
-    order_records = db.search_orders(q, limit=5000)
-    seen_order_lines = set()
-    yearly_totals_orders = {}   # year -> twd sum
-    yearly_products_orders = {} # (year, product) -> qty
-    yearly_categories_orders = {} # (year, category) -> qty
-
+def get_parsed_transactions(order_records, pos_records, q=None, filter_type=None):
+    import json
+    
+    def parse_d(d_str):
+        if not d_str: return None
+        try:
+            return datetime.strptime(d_str.strip()[:10], "%Y-%m-%d")
+        except:
+            return None
+            
+    # 1. Parse Order Detail Lines
+    order_lines = []
+    seen_lines = set()
     for r in order_records:
         try:
             rec = json.loads(r["raw_json"])
         except Exception:
             continue
         order_no = _val(rec.get("訂購單號", {}).get("value", ""))
-        order_date = _val(rec.get("訂購日期", {}).get("value", ""))
-        year = _year(order_date)
+        order_date_str = _val(rec.get("訂購日期", {}).get("value", ""))
+        year = _year(order_date_str)
         if not year:
             continue
             
-        currency = _val(rec.get("幣別", {}).get("value", ""))
         rate_val = rec.get("匯率", {}).get("value")
         ex_rate = _safe_float(rate_val, default=None)
         
@@ -517,11 +521,23 @@ def api_analysis_customer():
         for line_item in detail_table:
             cell = line_item.get("value", {})
             line_no = _val(cell.get("行號", {}).get("value", ""))
-            key = (order_no, line_no)
-            if key in seen_order_lines:
-                continue
-            seen_order_lines.add(key)
             
+            key = (order_no, line_no)
+            if key in seen_lines:
+                continue
+            seen_lines.add(key)
+            
+            product_no = _val(cell.get("產品代號", {}).get("value", "")).strip()
+            product_name = _val(cell.get("產品名稱", {}).get("value", "")).strip() # category
+            
+            # Apply filters
+            if filter_type == 'product' and q:
+                if q.lower() not in product_no.lower():
+                    continue
+            elif filter_type == 'category' and q:
+                if q.lower() not in product_name.lower():
+                    continue
+                    
             qty = _safe_float(cell.get("數量", {}).get("value"))
             price = _safe_float(cell.get("單價", {}).get("value"))
             
@@ -533,79 +549,206 @@ def api_analysis_customer():
             if twd is None or twd == 0.0:
                 twd = cell_amt * ex_rate
                 
-            product = _val(cell.get("產品代號", {}).get("value", ""))
-            category = _val(cell.get("產品名稱", {}).get("value", ""))
-            yearly_totals_orders[year] = yearly_totals_orders.get(year, 0) + twd
+            cost = _safe_float(cell.get("成本金額_TWD_", {}).get("value"), default=None)
+            if cost is None or cost == 0.0:
+                cost_price = _safe_float(cell.get("成本單價", {}).get("value"))
+                cost_rate = _safe_float(cell.get("成本匯率", {}).get("value"), default=ex_rate)
+                cost = qty * cost_price * cost_rate
+                
+            customer = _val(rec.get("客戶名稱", {}).get("value", ""))
             
-            pk = (year, product)
-            yearly_products_orders[pk] = yearly_products_orders.get(pk, 0) + qty
-            
-            ck = (year, category)
-            yearly_categories_orders[ck] = yearly_categories_orders.get(ck, 0) + qty
+            order_lines.append({
+                'source': 'orders',
+                'order_no': order_no,
+                'customer': customer,
+                'date_str': order_date_str,
+                'date': parse_d(order_date_str),
+                'year': year,
+                'product_no': product_no,
+                'category': product_name,
+                'qty': qty,
+                'amount_twd': twd,
+                'cost_twd': cost,
+                'matched': False
+            })
 
-    # ── 2. 從 POS 取資料（補 Orders 沒有的年份/產品）──
-    pos_records = db.search_pos(q, limit=10000)
-    yearly_totals_pos = {}   # year -> twd sum（僅 Orders 沒有該年時使用）
-    yearly_products_pos = {} # (year, product) -> qty（Orders 沒有時使用）
-    yearly_categories_pos = {} # (year, category) -> qty
-
+    # 2. Parse POS Lines
+    pos_lines = []
     for r in pos_records:
-        try:
-            rec = json.loads(r["raw_json"])
-        except Exception:
-            continue
-        po_date = r.get("po_date", "")
-        year = _year(po_date)
+        po_date_str = r.get("po_date", "")
+        year = _year(po_date_str)
         if not year:
             continue
-        sales_total = _safe_float(r.get("sales_total"))
+            
+        product_no = (r.get("product_no") or "").strip()
+        product_name = (r.get("product_type") or "").strip() # category
+        
+        # Apply filters
+        if filter_type == 'product' and q:
+            if q.lower() not in product_no.lower():
+                continue
+        elif filter_type == 'category' and q:
+            if q.lower() not in product_name.lower():
+                continue
+                
         qty = _safe_float(r.get("qty"))
-        product = r.get("product_no", "")
-        category = r.get("product_type", "")
-        yearly_totals_pos[year] = yearly_totals_pos.get(year, 0) + sales_total
+        sales_total = _safe_float(r.get("sales_total"))
         
-        pk = (year, product)
-        yearly_products_pos[pk] = yearly_products_pos.get(pk, 0) + qty
+        try:
+            p_raw = json.loads(r["raw_json"])
+            cost_twd = _safe_float(p_raw.get("Cost_Total_Price__NT__", {}).get("value"))
+        except:
+            cost_twd = 0.0
+            
+        customer = r.get("customer", "")
         
-        ck = (year, category)
-        yearly_categories_pos[ck] = yearly_categories_pos.get(ck, 0) + qty
-
-    # ── 3. 合併（Orders 優先，POS 補充）──
-    all_years = sorted(set(list(yearly_totals_orders.keys()) + list(yearly_totals_pos.keys())))
-    yearly_totals = []
-    for yr in all_years:
-        has_orders = yr in yearly_totals_orders
-        yearly_totals.append({
-            "year": yr,
-            "amount_twd": yearly_totals_orders.get(yr, 0) if has_orders else yearly_totals_pos.get(yr, 0),
-            "source": "orders" if has_orders else "pos",
+        pos_lines.append({
+            'source': 'pos',
+            'customer': customer,
+            'date_str': po_date_str,
+            'date': parse_d(po_date_str),
+            'year': year,
+            'product_no': product_no,
+            'category': product_name,
+            'qty': qty,
+            'amount_twd': sales_total,
+            'cost_twd': cost_twd,
+            'matched': False
         })
+        
+    # 3. Match 1-to-1
+    for o in order_lines:
+        if not o['date']: continue
+        for p in pos_lines:
+            if p['matched']: continue
+            if not p['date']: continue
+            
+            # Match condition: same product, same qty, date within 7 days
+            if o['product_no'].lower() != p['product_no'].lower():
+                continue
+            if abs(o['qty'] - p['qty']) > 0.01:
+                continue
+            if abs((o['date'] - p['date']).days) <= 7:
+                o['matched'] = True
+                p['matched'] = True
+                break
+                
+    # Combine POS + unmatched Orders
+    merged = []
+    for p in pos_lines:
+        merged.append(p)
+    for o in order_lines:
+        if not o['matched']:
+            merged.append(o)
+            
+    return merged
 
-    # 產品明細合併（Orders 優先，POS 補充）
-    all_product_keys = set(yearly_products_orders.keys()) | set(yearly_products_pos.keys())
+
+@app.route("/api/analysis/customer")
+def api_analysis_customer():
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify({"error": "請提供搜尋關鍵字"}), 400
+
+    order_records = db.search_orders(q, limit=5000)
+    pos_records = db.search_pos(q, limit=10000)
+    merged = get_parsed_transactions(order_records, pos_records, filter_type=None)
+
+    yearly_t = {}
+    yearly_p = {}
+    yearly_c = {}
+    
+    for tx in merged:
+        yr = tx['year']
+        source = tx['source']
+        amt = tx['amount_twd']
+        qty = tx['qty']
+        prod = tx['product_no']
+        cat = tx['category']
+        
+        # 1. Totals
+        if yr not in yearly_t:
+            yearly_t[yr] = {'pos_sum': 0.0, 'orders_sum': 0.0}
+        if source == 'pos':
+            yearly_t[yr]['pos_sum'] += amt
+        else:
+            yearly_t[yr]['orders_sum'] += amt
+            
+        # 2. Products
+        if prod:
+            pk = (yr, prod)
+            if pk not in yearly_p:
+                yearly_p[pk] = {'pos_qty': 0.0, 'orders_qty': 0.0}
+            if source == 'pos':
+                yearly_p[pk]['pos_qty'] += qty
+            else:
+                yearly_p[pk]['orders_qty'] += qty
+                
+        # 3. Categories
+        if cat:
+            ck = (yr, cat)
+            if ck not in yearly_c:
+                yearly_c[ck] = {'pos_qty': 0.0, 'orders_qty': 0.0}
+            if source == 'pos':
+                yearly_c[ck]['pos_qty'] += qty
+            else:
+                yearly_c[ck]['orders_qty'] += qty
+
+    # Format output
+    yearly_totals = []
+    for yr in sorted(yearly_t.keys()):
+        p_sum = yearly_t[yr]['pos_sum']
+        o_sum = yearly_t[yr]['orders_sum']
+        tot = p_sum + o_sum
+        if p_sum > 0 and o_sum > 0:
+            src = 'orders & pos'
+        elif p_sum > 0:
+            src = 'pos'
+        else:
+            src = 'orders'
+        yearly_totals.append({
+            'year': yr,
+            'amount_twd': tot,
+            'source': src
+        })
+        
     yearly_products = []
-    for (yr, prod) in sorted(all_product_keys):
-        if (yr, prod) in yearly_products_orders:
-            qty = yearly_products_orders[(yr, prod)]
-            src = "orders"
-        else:
-            qty = yearly_products_pos[(yr, prod)]
-            src = "pos"
-        if prod and qty:
-            yearly_products.append({"year": yr, "product": prod, "qty": qty, "source": src})
-
-    # 產品類別明細合併（Orders 優先，POS 補充）
-    all_category_keys = set(yearly_categories_orders.keys()) | set(yearly_categories_pos.keys())
+    for (yr, prod), q_dict in sorted(yearly_p.items()):
+        p_qty = q_dict['pos_qty']
+        o_qty = q_dict['orders_qty']
+        tot = p_qty + o_qty
+        if tot > 0:
+            if p_qty > 0 and o_qty > 0:
+                src = 'orders & pos'
+            elif p_qty > 0:
+                src = 'pos'
+            else:
+                src = 'orders'
+            yearly_products.append({
+                'year': yr,
+                'product': prod,
+                'qty': tot,
+                'source': src
+            })
+            
     yearly_categories = []
-    for (yr, cat) in sorted(all_category_keys):
-        if (yr, cat) in yearly_categories_orders:
-            qty = yearly_categories_orders[(yr, cat)]
-            src = "orders"
-        else:
-            qty = yearly_categories_pos[(yr, cat)]
-            src = "pos"
-        if cat and qty:
-            yearly_categories.append({"year": yr, "category": cat, "qty": qty, "source": src})
+    for (yr, cat), q_dict in sorted(yearly_c.items()):
+        p_qty = q_dict['pos_qty']
+        o_qty = q_dict['orders_qty']
+        tot = p_qty + o_qty
+        if tot > 0:
+            if p_qty > 0 and o_qty > 0:
+                src = 'orders & pos'
+            elif p_qty > 0:
+                src = 'pos'
+            else:
+                src = 'orders'
+            yearly_categories.append({
+                'year': yr,
+                'category': cat,
+                'qty': tot,
+                'source': src
+            })
 
     return jsonify({
         "query": q,
@@ -621,108 +764,79 @@ def api_analysis_product():
     if not q:
         return jsonify({"error": "請提供搜尋關鍵字"}), 400
 
-    # ── 1. 從 Orders 明細搜尋產品 ──
     all_orders = db.search_orders("", limit=5000)
-    yearly_volume = {}    # year -> qty
-    yearly_revenue = {}   # year -> twd
-    yearly_cost = {}      # year -> cost_twd
-    # customer breakdown: (year, customer) -> qty
-    customer_breakdown = {}
-
-    for r in all_orders:
-        try:
-            rec = json.loads(r["raw_json"])
-        except Exception:
-            continue
-        customer = _val(rec.get("客戶名稱", {}).get("value", ""))
-        order_date = _val(rec.get("訂購日期", {}).get("value", ""))
-        year = _year(order_date)
-        if not year:
-            continue
-            
-        currency = _val(rec.get("幣別", {}).get("value", ""))
-        rate_val = rec.get("匯率", {}).get("value")
-        ex_rate = _safe_float(rate_val, default=None)
-        
-        hdr_total_raw = rec.get("金額合計", {}).get("value")
-        hdr_twd_raw = rec.get("本幣金額合計", {}).get("value")
-        
-        if ex_rate is None or ex_rate == 0.0:
-            t = _safe_float(hdr_total_raw)
-            twd_hdr = _safe_float(hdr_twd_raw)
-            if t and twd_hdr:
-                ex_rate = twd_hdr / t
-            else:
-                ex_rate = 1.0
-
-        detail_table = rec.get("訂購明細", {}).get("value", [])
-        for line_item in detail_table:
-            cell = line_item.get("value", {})
-            product_code = _val(cell.get("產品代號", {}).get("value", ""))
-            # 模糊比對只看產品代號
-            if q.lower() not in product_code.lower():
-                continue
-            qty = _safe_float(cell.get("數量", {}).get("value"))
-            price = _safe_float(cell.get("單價", {}).get("value"))
-            
-            cell_amt = _safe_float(cell.get("金額", {}).get("value"), default=None)
-            if cell_amt is None or cell_amt == 0.0:
-                cell_amt = qty * price
-                
-            twd = _safe_float(cell.get("金額合計_TWD_", {}).get("value"), default=None)
-            if twd is None or twd == 0.0:
-                twd = cell_amt * ex_rate
-                
-            cost = _safe_float(cell.get("成本金額_TWD_", {}).get("value"), default=None)
-            if cost is None or cost == 0.0:
-                cost_price = _safe_float(cell.get("成本單價", {}).get("value"))
-                cost_rate = _safe_float(cell.get("成本匯率", {}).get("value"), default=ex_rate)
-                cost = qty * cost_price * cost_rate
-                
-            yearly_volume[year] = yearly_volume.get(year, 0) + qty
-            yearly_revenue[year] = yearly_revenue.get(year, 0) + twd
-            yearly_cost[year] = yearly_cost.get(year, 0) + cost
-            ck = (year, customer)
-            customer_breakdown[ck] = customer_breakdown.get(ck, 0) + qty
-
-    # ── 2. POS 補充（若 Orders 沒有資料的年份）──
     all_pos = db.search_pos("", limit=20000)
-    pos_yearly_volume = {}
-    pos_customer_breakdown = {}
-    for r in all_pos:
-        prod_no = r.get("product_no", "")
-        if q.lower() not in prod_no.lower():
-            continue
-        year = _year(r.get("po_date", ""))
-        if not year:
-            continue
-        qty = _safe_float(r.get("qty"))
-        customer = r.get("customer", "")
-        pos_yearly_volume[year] = pos_yearly_volume.get(year, 0) + qty
-        ck = (year, customer)
-        pos_customer_breakdown[ck] = pos_customer_breakdown.get(ck, 0) + qty
+    merged = get_parsed_transactions(all_orders, all_pos, q=q, filter_type='product')
 
-    # ── 3. 合併 ──
-    all_years = sorted(set(list(yearly_volume.keys()) + list(pos_yearly_volume.keys())))
+    yearly_vol = {}
+    yearly_rev_cost = {}
+    cust_breakdown = {}
+    
+    for tx in merged:
+        yr = tx['year']
+        source = tx['source']
+        qty = tx['qty']
+        amt = tx['amount_twd']
+        cost = tx['cost_twd']
+        cust = tx['customer']
+        
+        # 1. Volume
+        if yr not in yearly_vol:
+            yearly_vol[yr] = {'pos_qty': 0.0, 'orders_qty': 0.0}
+        if source == 'pos':
+            yearly_vol[yr]['pos_qty'] += qty
+        else:
+            yearly_vol[yr]['orders_qty'] += qty
+            
+        # 2. Revenue & Cost (for margin)
+        if yr not in yearly_rev_cost:
+            yearly_rev_cost[yr] = {'revenue': 0.0, 'cost': 0.0}
+        yearly_rev_cost[yr]['revenue'] += amt
+        yearly_rev_cost[yr]['cost'] += cost
+        
+        # 3. Customer Breakdown
+        if cust:
+            ck = (yr, cust)
+            cust_breakdown[ck] = cust_breakdown.get(ck, 0.0) + qty
+            
+    # Format output
     volume_out = []
+    for yr in sorted(yearly_vol.keys()):
+        p_qty = yearly_vol[yr]['pos_qty']
+        o_qty = yearly_vol[yr]['orders_qty']
+        tot = p_qty + o_qty
+        if p_qty > 0 and o_qty > 0:
+            src = 'orders & pos'
+        elif p_qty > 0:
+            src = 'pos'
+        else:
+            src = 'orders'
+        volume_out.append({
+            'year': yr,
+            'qty': tot,
+            'source': src
+        })
+        
     margin_out = []
-    for yr in all_years:
-        has_orders = yr in yearly_volume
-        vol = yearly_volume.get(yr, 0) if has_orders else pos_yearly_volume.get(yr, 0)
-        volume_out.append({"year": yr, "qty": vol, "source": "orders" if has_orders else "pos"})
-        if has_orders and yearly_revenue.get(yr, 0) != 0:
-            rev = yearly_revenue[yr]
-            cost = yearly_cost.get(yr, 0)
-            margin_pct = round((rev - cost) / rev * 100, 1) if rev else None
-            margin_out.append({"year": yr, "margin_pct": margin_pct, "revenue_twd": rev})
-
-    # 客戶分解：合併 orders + pos
-    all_ck = set(customer_breakdown.keys()) | set(pos_customer_breakdown.keys())
+    for yr in sorted(yearly_rev_cost.keys()):
+        rev = yearly_rev_cost[yr]['revenue']
+        cost = yearly_rev_cost[yr]['cost']
+        if rev != 0.0:
+            margin_pct = round((rev - cost) / rev * 100, 1)
+            margin_out.append({
+                'year': yr,
+                'margin_pct': margin_pct,
+                'revenue_twd': rev
+            })
+            
     cb_out = []
-    for (yr, cust) in sorted(all_ck):
-        qty = customer_breakdown.get((yr, cust), 0) or pos_customer_breakdown.get((yr, cust), 0)
-        if cust and qty:
-            cb_out.append({"year": yr, "customer": cust, "qty": qty})
+    for (yr, cust), qty in sorted(cust_breakdown.items()):
+        if qty > 0:
+            cb_out.append({
+                'year': yr,
+                'customer': cust,
+                'qty': qty
+            })
 
     return jsonify({
         "query": q,
@@ -738,108 +852,79 @@ def api_analysis_category():
     if not q:
         return jsonify({"error": "請提供搜尋關鍵字"}), 400
 
-    # ── 1. 從 Orders 明細搜尋產品類別 ──
     all_orders = db.search_orders("", limit=5000)
-    yearly_volume = {}    # year -> qty
-    yearly_revenue = {}   # year -> twd
-    yearly_cost = {}      # year -> cost_twd
-    # customer breakdown: (year, customer) -> qty
-    customer_breakdown = {}
-
-    for r in all_orders:
-        try:
-            rec = json.loads(r["raw_json"])
-        except Exception:
-            continue
-        customer = _val(rec.get("客戶名稱", {}).get("value", ""))
-        order_date = _val(rec.get("訂購日期", {}).get("value", ""))
-        year = _year(order_date)
-        if not year:
-            continue
-            
-        currency = _val(rec.get("幣別", {}).get("value", ""))
-        rate_val = rec.get("匯率", {}).get("value")
-        ex_rate = _safe_float(rate_val, default=None)
-        
-        hdr_total_raw = rec.get("金額合計", {}).get("value")
-        hdr_twd_raw = rec.get("本幣金額合計", {}).get("value")
-        
-        if ex_rate is None or ex_rate == 0.0:
-            t = _safe_float(hdr_total_raw)
-            twd_hdr = _safe_float(hdr_twd_raw)
-            if t and twd_hdr:
-                ex_rate = twd_hdr / t
-            else:
-                ex_rate = 1.0
-
-        detail_table = rec.get("訂購明細", {}).get("value", [])
-        for line_item in detail_table:
-            cell = line_item.get("value", {})
-            product_name = _val(cell.get("產品名稱", {}).get("value", ""))
-            # 模糊比對只看產品名稱（類別）
-            if q.lower() not in product_name.lower():
-                continue
-            qty = _safe_float(cell.get("數量", {}).get("value"))
-            price = _safe_float(cell.get("單價", {}).get("value"))
-            
-            cell_amt = _safe_float(cell.get("金額", {}).get("value"), default=None)
-            if cell_amt is None or cell_amt == 0.0:
-                cell_amt = qty * price
-                
-            twd = _safe_float(cell.get("金額合計_TWD_", {}).get("value"), default=None)
-            if twd is None or twd == 0.0:
-                twd = cell_amt * ex_rate
-                
-            cost = _safe_float(cell.get("成本金額_TWD_", {}).get("value"), default=None)
-            if cost is None or cost == 0.0:
-                cost_price = _safe_float(cell.get("成本單價", {}).get("value"))
-                cost_rate = _safe_float(cell.get("成本匯率", {}).get("value"), default=ex_rate)
-                cost = qty * cost_price * cost_rate
-                
-            yearly_volume[year] = yearly_volume.get(year, 0) + qty
-            yearly_revenue[year] = yearly_revenue.get(year, 0) + twd
-            yearly_cost[year] = yearly_cost.get(year, 0) + cost
-            ck = (year, customer)
-            customer_breakdown[ck] = customer_breakdown.get(ck, 0) + qty
-
-    # ── 2. POS 補充（若 Orders 沒有資料的年份）──
     all_pos = db.search_pos("", limit=20000)
-    pos_yearly_volume = {}
-    pos_customer_breakdown = {}
-    for r in all_pos:
-        prod_type = r.get("product_type", "")
-        if q.lower() not in prod_type.lower():
-            continue
-        year = _year(r.get("po_date", ""))
-        if not year:
-            continue
-        qty = _safe_float(r.get("qty"))
-        customer = r.get("customer", "")
-        pos_yearly_volume[year] = pos_yearly_volume.get(year, 0) + qty
-        ck = (year, customer)
-        pos_customer_breakdown[ck] = pos_customer_breakdown.get(ck, 0) + qty
+    merged = get_parsed_transactions(all_orders, all_pos, q=q, filter_type='category')
 
-    # ── 3. 合併 ──
-    all_years = sorted(set(list(yearly_volume.keys()) + list(pos_yearly_volume.keys())))
+    yearly_vol = {}
+    yearly_rev_cost = {}
+    cust_breakdown = {}
+    
+    for tx in merged:
+        yr = tx['year']
+        source = tx['source']
+        qty = tx['qty']
+        amt = tx['amount_twd']
+        cost = tx['cost_twd']
+        cust = tx['customer']
+        
+        # 1. Volume
+        if yr not in yearly_vol:
+            yearly_vol[yr] = {'pos_qty': 0.0, 'orders_qty': 0.0}
+        if source == 'pos':
+            yearly_vol[yr]['pos_qty'] += qty
+        else:
+            yearly_vol[yr]['orders_qty'] += qty
+            
+        # 2. Revenue & Cost (for margin)
+        if yr not in yearly_rev_cost:
+            yearly_rev_cost[yr] = {'revenue': 0.0, 'cost': 0.0}
+        yearly_rev_cost[yr]['revenue'] += amt
+        yearly_rev_cost[yr]['cost'] += cost
+        
+        # 3. Customer Breakdown
+        if cust:
+            ck = (yr, cust)
+            cust_breakdown[ck] = cust_breakdown.get(ck, 0.0) + qty
+            
+    # Format output
     volume_out = []
+    for yr in sorted(yearly_vol.keys()):
+        p_qty = yearly_vol[yr]['pos_qty']
+        o_qty = yearly_vol[yr]['orders_qty']
+        tot = p_qty + o_qty
+        if p_qty > 0 and o_qty > 0:
+            src = 'orders & pos'
+        elif p_qty > 0:
+            src = 'pos'
+        else:
+            src = 'orders'
+        volume_out.append({
+            'year': yr,
+            'qty': tot,
+            'source': src
+        })
+        
     margin_out = []
-    for yr in all_years:
-        has_orders = yr in yearly_volume
-        vol = yearly_volume.get(yr, 0) if has_orders else pos_yearly_volume.get(yr, 0)
-        volume_out.append({"year": yr, "qty": vol, "source": "orders" if has_orders else "pos"})
-        if has_orders and yearly_revenue.get(yr, 0) != 0:
-            rev = yearly_revenue[yr]
-            cost = yearly_cost.get(yr, 0)
-            margin_pct = round((rev - cost) / rev * 100, 1) if rev else None
-            margin_out.append({"year": yr, "margin_pct": margin_pct, "revenue_twd": rev})
-
-    # 客戶分解：合併 orders + pos
-    all_ck = set(customer_breakdown.keys()) | set(pos_customer_breakdown.keys())
+    for yr in sorted(yearly_rev_cost.keys()):
+        rev = yearly_rev_cost[yr]['revenue']
+        cost = yearly_rev_cost[yr]['cost']
+        if rev != 0.0:
+            margin_pct = round((rev - cost) / rev * 100, 1)
+            margin_out.append({
+                'year': yr,
+                'margin_pct': margin_pct,
+                'revenue_twd': rev
+            })
+            
     cb_out = []
-    for (yr, cust) in sorted(all_ck):
-        qty = customer_breakdown.get((yr, cust), 0) or pos_customer_breakdown.get((yr, cust), 0)
-        if cust and qty:
-            cb_out.append({"year": yr, "customer": cust, "qty": qty})
+    for (yr, cust), qty in sorted(cust_breakdown.items()):
+        if qty > 0:
+            cb_out.append({
+                'year': yr,
+                'customer': cust,
+                'qty': qty
+            })
 
     return jsonify({
         "query": q,
