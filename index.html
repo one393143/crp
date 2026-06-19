@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CRM 業務與交易查詢系統</title>
+<title>EIT CRM</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
@@ -599,6 +599,73 @@ body{
   flex-direction:column;gap:12px;padding:60px;color:var(--muted);
 }
 
+.menu-toggle {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 22px;
+  color: var(--muted2);
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.menu-toggle:hover {
+  background: var(--accent-light);
+  color: var(--accent2);
+}
+
+@media (max-width: 768px) {
+  .menu-toggle {
+    display: flex;
+  }
+  #navbar {
+    position: relative;
+  }
+  .nav-brand {
+    margin-right: auto;
+  }
+  #tabbar {
+    display: none;
+    position: absolute;
+    top: 52px;
+    left: 0;
+    width: 100%;
+    background: var(--surface);
+    border-bottom: 2px solid var(--border);
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    margin: 0;
+    padding: 8px 0;
+    z-index: 100;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  }
+  #tabbar.open {
+    display: flex;
+  }
+  .tab-btn {
+    height: 44px;
+    padding: 0 20px;
+    border-bottom: none;
+    border-left: 3px solid transparent;
+    justify-content: flex-start;
+  }
+  .tab-btn.active {
+    border-bottom: none;
+    border-left-color: var(--accent2);
+    background: var(--accent-light);
+  }
+  .tab-chip {
+    display: none;
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   RWD — Mobile
+   ══════════════════════════════════════════════════ */
 .spinner{
   width:26px;height:26px;
   border:2.5px solid var(--border);
@@ -725,7 +792,8 @@ mark{
 
 <!-- Navbar -->
 <nav id="navbar">
-  <div class="nav-brand">⚡ CRM 業務與交易查詢系統</div>
+  <button class="menu-toggle" id="menu-toggle" aria-label="Toggle Menu">☰</button>
+  <div class="nav-brand">EIT CRM</div>
   <!-- Tab Bar -->
   <div id="tabbar">
     <button class="tab-btn active" data-tab="home">首頁</button>
@@ -746,7 +814,6 @@ mark{
   <!-- HOME -->
   <div id="tab-home" class="tab-pane active">
     <div class="home-hero">
-      <div class="home-title">客戶與交易查詢</div>
       <div class="search-type-group" id="search-type-group">
         <button class="search-type-btn active" data-mode="all">ALL</button>
         <button class="search-type-btn" data-mode="customer">客戶</button>
@@ -1568,6 +1635,12 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById(tabMap[tab]).classList.add('active');
 
+    // Close hamburger menu if open
+    const tabbar = document.getElementById('tabbar');
+    if (tabbar.classList.contains('open')) {
+      tabbar.classList.remove('open');
+    }
+
     if (tab !== 'home') {
       if (S[tab].ok) renderTable(tab);
       else {
@@ -1577,6 +1650,20 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
       }
     }
   });
+});
+
+// ── Hamburger Menu Handlers ──────────────────────────────────
+document.getElementById('menu-toggle').addEventListener('click', e => {
+  e.stopPropagation();
+  document.getElementById('tabbar').classList.toggle('open');
+});
+
+document.addEventListener('click', e => {
+  const tabbar = document.getElementById('tabbar');
+  const toggle = document.getElementById('menu-toggle');
+  if (tabbar.classList.contains('open') && !tabbar.contains(e.target) && e.target !== toggle) {
+    tabbar.classList.remove('open');
+  }
 });
 
 // ── Global search bindings ──────────────────────────────────
